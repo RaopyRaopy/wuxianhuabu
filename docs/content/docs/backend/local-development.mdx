@@ -1,0 +1,26 @@
+---
+title: 本地开发
+description: 视频创作台的本地开发方式
+---
+
+# 本地开发
+
+主应用位于 `web/`，是一个 Vite + React 前端。AI 请求由浏览器直接发送至用户配置的 OpenAI 兼容接口。
+
+## 启动前端
+
+```bash
+cd web
+bun install
+bun run dev
+```
+
+默认访问地址为 `http://localhost:3000`。
+
+## 常用位置
+
+- 视频页面：`web/src/pages/video/`
+- 视频 API：`web/src/services/api/video.ts`
+- 全局配置：`web/src/stores/use-config-store.ts`
+- 配置弹窗：`web/src/components/layout/app-config-modal.tsx`
+- 文档内容：`docs/content/docs/`

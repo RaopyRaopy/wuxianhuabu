@@ -1,0 +1,15 @@
+.stroke-text {
+    display: block;
+    width: 100%;
+    line-height: 0;
+}
+
+.stroke-text__svg {
+    display: block;
+    width: 100%;
+    height: var(--stroke-text-height, 160px);
+}
+
+.stroke-text__svg text {
+    user-select: none;
+}

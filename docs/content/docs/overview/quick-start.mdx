@@ -1,0 +1,36 @@
+---
+title: 快速开始
+description: 启动并配置视频创作台
+---
+
+# 快速开始
+
+## 本地启动
+
+```bash
+git clone git@github.com:basketikun/infinite-canvas.git
+cd infinite-canvas/web
+bun install
+bun run dev
+```
+
+访问 `http://localhost:3000`。
+
+## Docker 启动
+
+```bash
+git clone git@github.com:basketikun/infinite-canvas.git
+cd infinite-canvas
+docker compose up -d --build
+```
+
+启动后访问 `http://localhost:3000`。
+
+## 首次配置
+
+1. 打开右上角设置。
+2. 在渠道中填写 OpenAI 兼容 `Base URL` 和 `API Key`，并添加或拉取模型。
+3. 在模型中选择可用的视频模型与默认视频模型。
+4. 返回视频创作台，填写提示词并按需添加参考素材。
+
+视频生成记录、参考素材和 API Key 默认保存在浏览器本地。需要跨设备使用时，可在设置中配置 WebDAV 同步。
