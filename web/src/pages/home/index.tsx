@@ -10,10 +10,10 @@ export default function HomePage() {
     return (
         <main className="relative flex h-full min-h-0 flex-col overflow-hidden bg-black text-white">
             <GradientWaves
-                className="absolute inset-0 opacity-80"
-                horizonColor="#10101d"
-                waveColor="#5227FF"
-                crestColor="#FF9FFC"
+                className="absolute inset-0"
+                horizonColor="#5227FF"
+                waveColor="#FF9FFC"
+                crestColor="#FFFFFF"
                 speed={0.4}
                 amplitude={2.5}
                 waveScale={0.6}
