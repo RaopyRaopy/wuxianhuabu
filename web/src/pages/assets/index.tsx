@@ -189,7 +189,19 @@ export default function AssetsPage() {
     return (
         <div className="specular-ui relative flex h-full flex-col overflow-hidden bg-background text-stone-900 dark:text-stone-100">
             <div className="pointer-events-none absolute inset-0">
-                <DotField dotRadius={2.25} dotSpacing={15} bulgeStrength={60} glowRadius={210} gradientFrom="rgba(96, 165, 250, 0.92)" gradientTo="rgba(255, 255, 255, 0.82)" glowColor="rgba(37, 99, 235, 0.28)" />
+                <DotField
+                    dotRadius={2}
+                    dotSpacing={9}
+                    bulgeStrength={67}
+                    glowRadius={100}
+                    sparkle
+                    waveAmplitude={0}
+                    cursorForce={0.06}
+                    bulgeOnly={false}
+                    gradientFrom="rgba(96, 165, 250, 0.92)"
+                    gradientTo="rgba(255, 255, 255, 0.82)"
+                    glowColor="rgba(37, 99, 235, 0.28)"
+                />
             </div>
             <main className="relative z-10 min-h-0 flex-1 overflow-y-auto bg-background/70 px-6 py-8 backdrop-blur-[1px]">
                 <div className="pb-8">

@@ -37,7 +37,7 @@ const DotField = memo(function DotField({
 }: DotFieldProps) {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const glowRef = useRef<SVGCircleElement>(null);
-    const dotsRef = useRef<Array<{ ax: number; ay: number; sx: number; sy: number }>>([]);
+    const dotsRef = useRef<Array<{ ax: number; ay: number; sx: number; sy: number; vx: number; vy: number }>>([]);
 
     useEffect(() => {
         const canvas = canvasRef.current;
@@ -63,7 +63,7 @@ const DotField = memo(function DotField({
                 const row = Math.floor(index / columns);
                 const x = padX + column * step;
                 const y = padY + row * step;
-                return { ax: x, ay: y, sx: x, sy: y };
+                return { ax: x, ay: y, sx: x, sy: y, vx: 0, vy: 0 };
             });
         };
 
@@ -123,13 +123,27 @@ const DotField = memo(function DotField({
                 const distanceSquared = dx * dx + dy * dy;
                 if (distanceSquared < cursorRadiusSquared && engagement > 0.01) {
                     const distance = Math.sqrt(distanceSquared) || 1;
-                    const amount = (1 - distance / cursorRadius) ** 2 * bulgeStrength * engagement;
                     const angle = Math.atan2(dy, dx);
-                    dot.sx += (dot.ax - Math.cos(angle) * amount - dot.sx) * 0.15;
-                    dot.sy += (dot.ay - Math.sin(angle) * amount - dot.sy) * 0.15;
+                    if (bulgeOnly) {
+                        const amount = (1 - distance / cursorRadius) ** 2 * bulgeStrength * engagement;
+                        dot.sx += (dot.ax - Math.cos(angle) * amount - dot.sx) * 0.15;
+                        dot.sy += (dot.ay - Math.sin(angle) * amount - dot.sy) * 0.15;
+                    } else {
+                        const move = (500 / distance) * (mouse.speed * cursorForce);
+                        dot.vx += Math.cos(angle) * -move;
+                        dot.vy += Math.sin(angle) * -move;
+                    }
                 } else {
-                    dot.sx += (dot.ax - dot.sx) * 0.1;
-                    dot.sy += (dot.ay - dot.sy) * 0.1;
+                    if (bulgeOnly) {
+                        dot.sx += (dot.ax - dot.sx) * 0.1;
+                        dot.sy += (dot.ay - dot.sy) * 0.1;
+                    }
+                }
+                if (!bulgeOnly) {
+                    dot.vx *= 0.9;
+                    dot.vy *= 0.9;
+                    dot.sx += (dot.ax + dot.vx - dot.sx) * 0.1;
+                    dot.sy += (dot.ay + dot.vy - dot.sy) * 0.1;
                 }
                 const wave = waveAmplitude > 0 ? Math.sin(dot.ax * 0.03 + frame * 0.02) * waveAmplitude : 0;
                 const drawX = dot.sx + (waveAmplitude > 0 ? Math.cos(dot.ay * 0.03 + frame * 0.014) * waveAmplitude * 0.5 : 0);
@@ -155,7 +169,7 @@ const DotField = memo(function DotField({
             window.removeEventListener("resize", onResize);
             window.removeEventListener("mousemove", onMouseMove);
         };
-    }, [bulgeStrength, cursorRadius, dotRadius, dotSpacing, gradientFrom, gradientTo, sparkle, waveAmplitude]);
+    }, [bulgeOnly, bulgeStrength, cursorForce, cursorRadius, dotRadius, dotSpacing, gradientFrom, gradientTo, sparkle, waveAmplitude]);
 
     return (
         <div className={`dot-field-container pointer-events-none ${className || ""}`} {...rest}>
