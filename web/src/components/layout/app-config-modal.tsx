@@ -7,7 +7,7 @@ import { fetchChannelModels } from "@/services/api/image";
 import { syncAppDataToWebdav, type AppSyncDomainKey, type AppSyncProgressEvent } from "@/services/app-sync";
 import { testWebdavConnection, WEBDAV_MANIFEST_FILE_NAME } from "@/services/webdav-sync";
 import { audioFormatOptions, audioVoiceOptions, normalizeAudioSpeedValue } from "@/lib/audio-generation";
-import { createModelChannel, defaultBaseUrlForApiFormat, filterModelsByCapability, modelOptionLabel, modelOptionsFromChannels, normalizeModelOptionValue, useConfigStore, type AiConfig, type ApiCallFormat, type ModelCapability, type ModelChannel } from "@/stores/use-config-store";
+import { createModelChannel, defaultBaseUrlForApiFormat, filterModelsByCapability, modelOptionLabel, modelOptionName, modelOptionsFromChannels, normalizeModelOptionValue, useConfigStore, type AiConfig, type ApiCallFormat, type ModelCapability, type ModelChannel } from "@/stores/use-config-store";
 
 type ModelGroup = {
     capability: ModelCapability;
@@ -120,7 +120,14 @@ export function AppConfigModal() {
         setLoadingChannelId(channel.id);
         try {
             const models = await fetchChannelModels(channel);
-            updateChannels(config.channels.map((item) => (item.id === channel.id ? { ...item, models } : item)));
+            if (!models.length) {
+                message.warning("接口请求成功，但没有返回可用模型，请确认 Base URL 是否为 https://api.lanvce.eu.cc");
+                return;
+            }
+            const channels = config.channels.map((item) => (item.id === channel.id ? { ...item, models } : item));
+            const nextConfig = withChannels(config, channels);
+            const imageModels = modelOptionsFromChannels(channels).filter((model) => modelOptionName(model).toLowerCase().includes("image"));
+            saveConfig({ ...nextConfig, imageModels, imageModel: imageModels.includes(nextConfig.imageModel) ? nextConfig.imageModel : imageModels[0] || "" });
             message.success(`${channel.name} 模型列表已更新`);
         } catch (error) {
             message.error(error instanceof Error ? error.message : "读取模型失败");
@@ -139,7 +146,10 @@ export function AppConfigModal() {
         try {
             const entries = await Promise.all(runnable.map(async (channel) => [channel.id, await fetchChannelModels(channel)] as const));
             const modelMap = new Map(entries);
-            updateChannels(config.channels.map((channel) => (modelMap.has(channel.id) ? { ...channel, models: modelMap.get(channel.id) || [] } : channel)));
+            const channels = config.channels.map((channel) => (modelMap.has(channel.id) ? { ...channel, models: modelMap.get(channel.id) || [] } : channel));
+            const nextConfig = withChannels(config, channels);
+            const imageModels = modelOptionsFromChannels(channels).filter((model) => modelOptionName(model).toLowerCase().includes("image"));
+            saveConfig({ ...nextConfig, imageModels, imageModel: imageModels.includes(nextConfig.imageModel) ? nextConfig.imageModel : imageModels[0] || "" });
             message.success("模型列表已更新");
         } catch (error) {
             message.error(error instanceof Error ? error.message : "读取模型失败");

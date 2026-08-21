@@ -207,6 +207,56 @@ function parseImagePayload(payload: ImageApiResponse) {
     return images;
 }
 
+export type GrokImageOptions = {
+    count: number;
+    resolution: "1k" | "2k";
+    aspectRatio: string;
+};
+
+function grokImageRequestConfig(config: AiConfig) {
+    const requestConfig = resolveModelRequestConfig(config, config.imageModel || config.model);
+    if (!["grok-imagine-image", "grok-imagine-image-quality"].includes(requestConfig.model)) throw new Error("\u8bf7\u5728\u914d\u7f6e\u4e2d\u9009\u62e9 Grok \u56fe\u7247\u751f\u6210\u6a21\u578b");
+    return requestConfig;
+}
+
+export async function requestGrokImageGeneration(config: AiConfig, prompt: string, options: GrokImageOptions) {
+    const requestConfig = grokImageRequestConfig(config);
+    try {
+        const response = await axios.post<ImageApiResponse>(
+            aiApiUrl(requestConfig, "/images/generations"),
+            { model: requestConfig.model, prompt: withSystemPrompt(requestConfig, prompt), n: options.count, resolution: options.resolution, aspect_ratio: options.aspectRatio, response_format: "b64_json" },
+            { headers: aiHeaders(requestConfig, "application/json") },
+        );
+        return parseImagePayload(response.data);
+    } catch (error) {
+        throw new Error(readAxiosError(error, "\u56fe\u7247\u751f\u6210\u8bf7\u6c42\u5931\u8d25"));
+    }
+}
+
+export async function requestGrokImageEdit(config: AiConfig, prompt: string, references: ReferenceImage[], options: GrokImageOptions) {
+    if (references.length > 3) throw new Error("Grok \u56fe\u7247\u7f16\u8f91\u6700\u591a\u652f\u6301 3 \u5f20\u53c2\u8003\u56fe");
+    const requestConfig = grokImageRequestConfig(config);
+    const images = await Promise.all(references.map(async (image) => ({ type: "image_url" as const, url: await imageToDataUrl(image) })));
+    try {
+        const response = await axios.post<ImageApiResponse>(
+            aiApiUrl(requestConfig, "/images/edits"),
+            {
+                model: requestConfig.model,
+                prompt: withSystemPrompt(requestConfig, prompt),
+                ...(images.length === 1 ? { image: images[0] } : { images }),
+                n: options.count,
+                resolution: options.resolution,
+                aspect_ratio: options.aspectRatio,
+                response_format: "b64_json",
+            },
+            { headers: aiHeaders(requestConfig, "application/json") },
+        );
+        return parseImagePayload(response.data);
+    } catch (error) {
+        throw new Error(readAxiosError(error, "\u56fe\u7247\u7f16\u8f91\u8bf7\u6c42\u5931\u8d25"));
+    }
+}
+
 function readAxiosError(error: unknown, fallback: string) {
     if (axios.isCancel(error)) return "请求已取消";
     if (axios.isAxiosError<{ error?: { message?: string }; msg?: string; code?: number }>(error)) {
@@ -731,14 +781,23 @@ export async function fetchImageModels(config: Pick<AiConfig, "baseUrl" | "apiKe
                 .filter((id): id is string => Boolean(id))
                 .sort((a, b) => a.localeCompare(b));
         }
-        const response = await axios.get<{ data?: Array<{ id?: string }>; error?: { message?: string } }>(buildApiUrl(config.baseUrl, "/models"), {
+        const response = await axios.get<{ data?: unknown; models?: unknown; error?: { message?: string } }>(buildApiUrl(config.baseUrl, "/models"), {
             headers: {
                 Authorization: `Bearer ${config.apiKey}`,
             },
         });
-        return (response.data.data || [])
-            .map((model) => model.id)
-            .filter((id): id is string => Boolean(id))
+        const payload = response.data;
+        const candidates = Array.isArray(payload) ? payload : Array.isArray(payload.data) ? payload.data : Array.isArray(payload.models) ? payload.models : [];
+        return candidates
+            .map((model) => {
+                if (typeof model === "string") return model;
+                if (!model || typeof model !== "object") return "";
+                const item = model as { id?: unknown; name?: unknown; model?: unknown };
+                return typeof item.id === "string" ? item.id : typeof item.name === "string" ? item.name : typeof item.model === "string" ? item.model : "";
+            })
+            .map((id) => id.trim())
+            .filter(Boolean)
+            .filter((id, index, values) => values.indexOf(id) === index)
             .sort((a, b) => a.localeCompare(b));
     } catch (error) {
         throw new Error(readAxiosError(error, "读取模型失败"));

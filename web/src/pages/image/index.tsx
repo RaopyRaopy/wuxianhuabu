@@ -10,11 +10,11 @@ import { PromptSelectDialog } from "@/components/prompts/prompt-select-dialog";
 import { AssetPickerModal, type InsertAssetPayload } from "@/components/canvas/asset-picker-modal";
 import { canvasThemes } from "@/lib/canvas-theme";
 import { imageReferenceLabel } from "@/lib/image-reference-prompt";
-import { modelOptionLabel, useConfigStore, useEffectiveConfig, type AiConfig } from "@/stores/use-config-store";
+import { modelOptionLabel, modelOptionName, useConfigStore, useEffectiveConfig, type AiConfig } from "@/stores/use-config-store";
 import { useThemeStore } from "@/stores/use-theme-store";
 import { nanoid } from "nanoid";
 import { formatBytes, formatDuration, getDataUrlByteSize, readImageMeta } from "@/lib/image-utils";
-import { requestEdit, requestGeneration } from "@/services/api/image";
+import { requestEdit, requestGeneration, requestGrokImageEdit, requestGrokImageGeneration } from "@/services/api/image";
 import { deleteStoredImages, resolveImageUrl, uploadImage } from "@/services/image-storage";
 import { useAssetStore } from "@/stores/use-asset-store";
 import type { ReferenceImage } from "@/types/image";
@@ -83,6 +83,7 @@ export default function ImagePage() {
     const [settingsOpen, setSettingsOpen] = useState(false);
     const [promptDialogOpen, setPromptDialogOpen] = useState(false);
     const [assetPickerOpen, setAssetPickerOpen] = useState(false);
+    const [resolution, setResolution] = useState<"1k" | "2k">("1k");
     const [startedAt, setStartedAt] = useState(0);
     const [elapsedMs, setElapsedMs] = useState(0);
     const [selectedLogIds, setSelectedLogIds] = useState<string[]>([]);
@@ -104,14 +105,14 @@ export default function ImagePage() {
     }, []);
 
     const addReferences = async (files?: FileList | null) => {
-        const imageFiles = Array.from(files || []).filter((file) => file.type.startsWith("image/"));
+        const imageFiles = Array.from(files || []).filter((file) => file.type.startsWith("image/")).slice(0, Math.max(0, 3 - references.length));
         const nextReferences = await Promise.all(
             imageFiles.map(async (file) => {
                 const image = await uploadImage(file);
                 return { id: nanoid(), name: file.name, type: image.mimeType, dataUrl: image.url, storageKey: image.storageKey };
             }),
         );
-        setReferences((value) => [...value, ...nextReferences]);
+        setReferences((value) => [...value, ...nextReferences].slice(0, 3));
     };
 
     const addReferencesFromClipboard = async () => {
@@ -123,12 +124,12 @@ export default function ImagePage() {
                 return;
             }
             const nextReferences = await Promise.all(
-                blobs.map(async (blob, index) => {
+                blobs.slice(0, Math.max(0, 3 - references.length)).map(async (blob, index) => {
                     const image = await uploadImage(blob);
                     return { id: nanoid(), name: `clipboard-${index + 1}.png`, type: image.mimeType, dataUrl: image.url, storageKey: image.storageKey };
                 }),
             );
-            setReferences((value) => [...value, ...nextReferences]);
+            setReferences((value) => [...value, ...nextReferences].slice(0, 3));
             message.success(`已读取 ${nextReferences.length} 张参考图`);
         } catch {
             message.error("剪切板里没有可读取的图片");
@@ -157,13 +158,38 @@ export default function ImagePage() {
         const batchStartedAt = performance.now();
         setStartedAt(batchStartedAt);
 
-        const tasks = Array.from({ length: generationCount }, (_, index) => runGenerationSlot(index, snapshot));
+        try {
+            const generated = snapshot.references.length
+                ? await requestGrokImageEdit(snapshot.config, snapshot.text, snapshot.references, { count: generationCount, resolution, aspectRatio: normalizeAspectRatio(snapshot.config.size) })
+                : await requestGrokImageGeneration(snapshot.config, snapshot.text, { count: generationCount, resolution, aspectRatio: normalizeAspectRatio(snapshot.config.size) });
+            const images = await Promise.all(
+                generated.map(async (image) => {
+                    const meta = await readImageMeta(image.dataUrl);
+                    return { id: image.id, dataUrl: image.dataUrl, durationMs: performance.now() - batchStartedAt, width: meta.width, height: meta.height, bytes: getDataUrlByteSize(image.dataUrl) };
+                }),
+            );
+            setResults(images.map((image) => ({ id: image.id, status: "success", image })));
+            const logImages = await Promise.all(images.map((image, index) => saveResultToAssets(image, index, false)));
+            saveLog(buildLog({ prompt: text, model, config: { ...snapshot.config, count: String(generationCount) }, references: snapshot.references, durationMs: performance.now() - batchStartedAt, successCount: images.length, failCount: 0, status: "\u6210\u529f", images: logImages }));
+            message.success("\u56fe\u7247\u5df2\u751f\u6210\u5e76\u4fdd\u5b58\u81f3\u6211\u7684\u7d20\u6750");
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : "\u751f\u6210\u5931\u8d25";
+            setResults((value) => value.map((item) => ({ ...item, status: "failed", error: errorMessage })));
+            message.error(errorMessage);
+        } finally {
+            setRunning(false);
+        }
+        return;
+
+        if (!snapshot) return;
+
+        const tasks = Array.from({ length: generationCount }, (_, index) => runGenerationSlot(index, snapshot!));
 
         const result = await Promise.allSettled(tasks);
         const successImages = result.filter((item): item is PromiseFulfilledResult<GeneratedImage> => item.status === "fulfilled").map((item) => item.value);
         const successCount = successImages.length;
         const failCount = generationCount - successCount;
-        const failed = result.find((item): item is PromiseRejectedResult => item.status === "rejected");
+        const failed = result.find((item): item is PromiseRejectedResult => item.status === "rejected") || { reason: undefined };
 
         try {
             const logImages = await Promise.all(
@@ -176,8 +202,8 @@ export default function ImagePage() {
                 buildLog({
                     prompt: text,
                     model,
-                    config: { ...snapshot.config, count: String(generationCount) },
-                    references: snapshot.references,
+                    config: { ...snapshot!.config, count: String(generationCount) },
+                    references: snapshot!.references,
                     durationMs: performance.now() - batchStartedAt,
                     successCount,
                     failCount,
@@ -201,17 +227,20 @@ export default function ImagePage() {
         message.success("已加入参考图");
     };
 
-    const saveResultToAssets = async (image: GeneratedImage, index: number) => {
+    const saveResultToAssets = async (image: GeneratedImage, index: number, notify = true) => {
         const stored = await uploadImage(image.dataUrl);
+        const savedImage = { ...image, dataUrl: stored.url, storageKey: stored.storageKey, width: stored.width, height: stored.height, bytes: stored.bytes, mimeType: stored.mimeType };
         addAsset({
             kind: "image",
             title: `生成结果 ${index + 1}`,
             coverUrl: stored.url,
             tags: [],
             source: "生图工作台",
-            data: { dataUrl: stored.url, storageKey: stored.storageKey, width: stored.width, height: stored.height, bytes: stored.bytes, mimeType: stored.mimeType },
+            data: savedImage,
             metadata: { source: "image-page", prompt },
         });
+        if (notify) message.success("\u5df2\u52a0\u5165\u6211\u7684\u7d20\u6750");
+        return savedImage;
         message.success("已加入我的素材");
     };
 
@@ -220,7 +249,7 @@ export default function ImagePage() {
             setPrompt(payload.content);
         } else if (payload.kind === "image") {
             const stored = await uploadImage(payload.dataUrl);
-            setReferences((value) => [...value, { id: nanoid(), name: payload.title, type: stored.mimeType, dataUrl: stored.url, storageKey: stored.storageKey }]);
+            setReferences((value) => (value.length >= 3 ? value : [...value, { id: nanoid(), name: payload.title, type: stored.mimeType, dataUrl: stored.url, storageKey: stored.storageKey }]));
         } else {
             message.warning("生图工作台只能使用文本或图片素材");
         }
@@ -305,9 +334,9 @@ export default function ImagePage() {
     };
 
     return (
-        <div className="flex h-full flex-col overflow-hidden bg-stone-50 text-stone-900 dark:bg-stone-950 dark:text-stone-100">
+        <div className="specular-ui image-surface flex h-full flex-col overflow-hidden bg-stone-50 text-stone-900 dark:bg-[#111111] dark:text-stone-100">
             <main className="grid min-h-0 flex-1 grid-cols-1 gap-3 overflow-y-auto p-3 lg:grid-cols-[300px_minmax(0,1fr)] lg:overflow-hidden xl:grid-cols-[320px_minmax(0,1fr)]">
-                <aside className="thin-scrollbar hidden min-h-0 overflow-y-auto rounded-lg border border-stone-200 bg-card p-4 shadow-sm dark:border-stone-800 lg:block">
+                <aside className="specular-frame thin-scrollbar hidden min-h-0 overflow-y-auto rounded-lg border border-stone-200 bg-card p-4 shadow-sm dark:border-stone-800 lg:block">
                     <LogPanel
                         logs={logs}
                         selectedLogIds={selectedLogIds}
@@ -320,7 +349,7 @@ export default function ImagePage() {
                 </aside>
 
                 <section className="grid gap-3 lg:min-h-0 lg:overflow-hidden xl:grid-cols-[420px_minmax(0,1fr)]">
-                    <div className="thin-scrollbar flex flex-col rounded-lg border border-stone-200 bg-card p-4 shadow-sm dark:border-stone-800 lg:min-h-0 lg:overflow-y-auto">
+                    <div className="specular-frame thin-scrollbar flex flex-col rounded-lg border border-stone-200 bg-card p-4 shadow-sm dark:border-stone-800 lg:min-h-0 lg:overflow-y-auto">
                         <div>
                             <div className="flex items-start justify-between gap-3">
                                 <div className="min-w-0">
@@ -402,7 +431,7 @@ export default function ImagePage() {
                             </div>
 
                             <div className="hidden gap-4 sm:grid sm:grid-cols-2">
-                                <GenerationSettings config={effectiveConfig} model={model} updateConfig={updateConfig} openConfigDialog={openConfigDialog} />
+                                <GenerationSettings config={effectiveConfig} model={model} resolution={resolution} setResolution={setResolution} updateConfig={updateConfig} openConfigDialog={openConfigDialog} />
                             </div>
                         </div>
 
@@ -413,7 +442,7 @@ export default function ImagePage() {
                         </div>
                     </div>
 
-                    <div className="thin-scrollbar rounded-lg border border-stone-200 bg-card p-4 shadow-sm dark:border-stone-800 lg:min-h-0 lg:overflow-y-auto lg:p-5">
+                    <div className="specular-frame thin-scrollbar rounded-lg border border-stone-200 bg-card p-4 shadow-sm dark:border-stone-800 lg:min-h-0 lg:overflow-y-auto lg:p-5">
                         <div className="mb-4 flex items-center justify-between gap-3">
                             <div>
                                 <h2 className="text-xl font-semibold">生成结果</h2>
@@ -465,7 +494,7 @@ export default function ImagePage() {
             </Drawer>
             <Drawer title="参数" placement="bottom" size="82vh" open={settingsOpen} onClose={() => setSettingsOpen(false)}>
                 <div className="grid grid-cols-2 gap-3 pb-4">
-                    <GenerationSettings config={effectiveConfig} model={model} updateConfig={updateConfig} openConfigDialog={openConfigDialog} />
+                    <GenerationSettings config={effectiveConfig} model={model} resolution={resolution} setResolution={setResolution} updateConfig={updateConfig} openConfigDialog={openConfigDialog} />
                 </div>
             </Drawer>
             <PromptSelectDialog open={promptDialogOpen} onOpenChange={setPromptDialogOpen} onSelect={setPrompt} />
@@ -477,7 +506,7 @@ export default function ImagePage() {
     );
 }
 
-function GenerationSettings({ config, model, updateConfig, openConfigDialog }: { config: AiConfig; model: string; updateConfig: UpdateAiConfig; openConfigDialog: (shouldPromptContinue?: boolean) => void }) {
+function GenerationSettings({ config, model, resolution, setResolution, updateConfig, openConfigDialog }: { config: AiConfig; model: string; resolution: "1k" | "2k"; setResolution: (value: "1k" | "2k") => void; updateConfig: UpdateAiConfig; openConfigDialog: (shouldPromptContinue?: boolean) => void }) {
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
 
     return (
@@ -486,8 +515,33 @@ function GenerationSettings({ config, model, updateConfig, openConfigDialog }: {
                 <span className="mb-1.5 block text-sm font-semibold sm:mb-2 sm:text-base">模型</span>
                 <ModelPicker config={config} value={model} onChange={(value) => updateConfig("imageModel", value)} capability="image" fullWidth onMissingConfig={() => openConfigDialog(false)} />
             </label>
+            <div className="col-span-2 space-y-2">
+                <div className="text-xs font-medium" style={{ color: theme.node.muted }}>图片分辨率</div>
+                <div className="grid grid-cols-2 gap-2.5">
+                    {(["1k", "2k"] as const).map((value) => (
+                        <button key={value} type="button" className="h-9 rounded-full border text-sm transition hover:opacity-80" style={{ borderColor: resolution === value ? theme.node.text : theme.node.stroke, color: theme.node.text, background: resolution === value ? theme.node.fill : "transparent" }} onClick={() => setResolution(value)}>
+                            {value}
+                        </button>
+                    ))}
+                </div>
+            </div>
             <div className="col-span-2">
-                <ImageSettingsPanel config={config} onConfigChange={(key, value) => updateConfig(key, value)} theme={theme} showTitle={false} className="space-y-4" maxCount={10} />
+                <ImageSettingsPanel
+                    config={config}
+                    onConfigChange={(key, value) => {
+                        updateConfig(key, value);
+                        if (key === "quality") {
+                            const target = value === "medium" ? "grok-imagine-image-quality" : "grok-imagine-image";
+                            const modelOption = config.models.find((item) => modelOptionName(item) === target);
+                            if (modelOption) updateConfig("imageModel", modelOption);
+                        }
+                    }}
+                    theme={theme}
+                    showTitle={false}
+                    className="space-y-4"
+                    maxCount={10}
+                    grokMode
+                />
             </div>
         </>
     );
@@ -577,6 +631,10 @@ function FailedImageCard({ error, onRetry }: { error: string; onRetry: () => voi
 
 function updateResultAt(results: GenerationResult[], index: number, next: Partial<GenerationResult>) {
     return results.map((item, itemIndex) => (itemIndex === index ? { ...item, ...next } : item));
+}
+
+function normalizeAspectRatio(value: string) {
+    return value.replace(/-(?:2k|4k)$/i, "") || "auto";
 }
 
 function LogPanel({
