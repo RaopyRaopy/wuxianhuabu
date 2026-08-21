@@ -25,11 +25,6 @@ const aspectOptions = [
     { value: "3:4", label: "3:4", width: 1024, height: 1360, icon: "portrait" },
     { value: "16:9", label: "16:9", width: 1824, height: 1024, icon: "landscape" },
     { value: "9:16", label: "9:16", width: 1024, height: 1824, icon: "portrait" },
-    { value: "1:1-2k", label: "1:1(2k)", size: "2048x2048", width: 2048, height: 2048, icon: "square" },
-    { value: "16:9-2k", label: "16:9(2k)", size: "2048x1152", width: 2048, height: 1152, icon: "landscape" },
-    { value: "9:16-2k", label: "9:16(2k)", size: "1152x2048", width: 1152, height: 2048, icon: "portrait" },
-    { value: "16:9-4k", label: "16:9(4k)", size: "3840x2160", width: 3840, height: 2160, icon: "landscape" },
-    { value: "9:16-4k", label: "9:16(4k)", size: "2160x3840", width: 2160, height: 3840, icon: "portrait" },
     { value: "auto", label: "auto", width: 0, height: 0, icon: "auto" },
 ];
 
@@ -49,11 +44,11 @@ export function ImageSettingsPanel({ config, onConfigChange, theme, showTitle = 
     const quality = config.quality || "auto";
     const count = Math.max(1, Math.min(maxCount, Math.floor(Math.abs(Number(config.count)) || 1)));
     const activeSize = config.size || "auto";
-    const selectedAspect = aspectOptions.find((item) => (item.size || item.value) === activeSize || item.value === activeSize);
+    const selectedAspect = aspectOptions.find((item) => item.value === activeSize);
     const dimensions = readSizeDimensions(activeSize, selectedAspect || aspectOptions[0]);
     const selectAspect = (value: string) => {
         const option = aspectOptions.find((item) => item.value === value);
-        onConfigChange("size", option?.size || option?.value || "auto");
+        onConfigChange("size", option?.value || "auto");
     };
     const updateDimension = (key: "width" | "height", value: number | null) => {
         const next = Math.max(1, Math.floor(value || dimensions[key] || 1024));
@@ -110,7 +105,7 @@ export function ImageSettingsPanel({ config, onConfigChange, theme, showTitle = 
                                 key={item.value}
                                 type="button"
                                 className="flex h-[72px] cursor-pointer flex-col items-center justify-center gap-1.5 rounded-xl border bg-transparent text-sm transition hover:opacity-80"
-                                style={{ borderColor: selectedAspect?.value === item.value ? theme.node.text : theme.node.stroke, background: "transparent", color: theme.node.text }}
+                                style={{ borderColor: selectedAspect?.value === item.value ? theme.node.text : theme.node.stroke, background: selectedAspect?.value === item.value ? theme.node.fill : "transparent", color: theme.node.text, fontWeight: selectedAspect?.value === item.value ? 600 : 400 }}
                                 onMouseDown={(event) => event.stopPropagation()}
                                 onClick={() => selectAspect(item.value)}
                             >
@@ -154,7 +149,7 @@ export function imageQualityLabel(value: string) {
 }
 
 export function imageSizeLabel(size: string) {
-    return aspectOptions.find((item) => (item.size || item.value) === size || item.value === size)?.label || size;
+    return aspectOptions.find((item) => item.value === size)?.label || size;
 }
 
 function OptionPill({ selected, theme, onClick, children }: { selected: boolean; theme: CanvasTheme; onClick: () => void; children: ReactNode }) {
@@ -162,7 +157,7 @@ function OptionPill({ selected, theme, onClick, children }: { selected: boolean;
         <button
             type="button"
             className="h-9 cursor-pointer rounded-full border px-2 text-sm transition hover:opacity-80"
-            style={{ background: "transparent", borderColor: selected ? theme.node.text : theme.node.stroke, color: theme.node.text }}
+            style={{ background: selected ? theme.node.fill : "transparent", borderColor: selected ? theme.node.text : theme.node.stroke, color: theme.node.text, fontWeight: selected ? 600 : 400 }}
             onMouseDown={(event) => event.stopPropagation()}
             onClick={onClick}
         >

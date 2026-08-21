@@ -1,4 +1,4 @@
-import { FolderOpen, House, ImagePlus } from "lucide-react";
+import { FolderOpen, House, ImagePlus, Video } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 
 import { AppConfigModal } from "@/components/layout/app-config-modal";
@@ -23,6 +23,10 @@ export function AppTopNav() {
                         <Link to="/image" className="specular-nav-link">
                             <ImagePlus className="size-4" aria-hidden="true" />
                             <span>{"\u56fe\u7247\u521b\u4f5c"}</span>
+                        </Link>
+                        <Link to="/video" className="specular-nav-link">
+                            <Video className="size-4" aria-hidden="true" />
+                            <span>{"\u89c6\u9891\u521b\u4f5c"}</span>
                         </Link>
                         <Link to="/assets" className="specular-nav-link">
                             <FolderOpen className="size-4" aria-hidden="true" />

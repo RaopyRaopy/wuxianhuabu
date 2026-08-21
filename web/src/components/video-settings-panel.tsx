@@ -70,7 +70,8 @@ export function VideoSettingsPanel({ config, onConfigChange, theme, showTitle = 
                                 key={item.value}
                                 type="button"
                                 className="specular-control flex h-[78px] cursor-pointer flex-col items-center justify-center gap-1 rounded-xl border bg-transparent text-sm transition hover:opacity-80"
-                                style={{ borderColor: size === item.value ? theme.node.text : theme.node.stroke, color: theme.node.text }}
+                                data-selected={size === item.value}
+                                style={{ borderColor: size === item.value ? theme.node.text : theme.node.stroke, background: size === item.value ? theme.node.fill : "transparent", color: theme.node.text, fontWeight: size === item.value ? 600 : 400 }}
                                 onMouseDown={(event) => event.stopPropagation()}
                                 onClick={() => onConfigChange("size", item.value)}
                             >
@@ -132,7 +133,8 @@ function SeedanceVideoSettingsPanel({ config, onConfigChange, theme, showTitle, 
                                 key={item.value}
                                 type="button"
                                 className="specular-control flex h-[68px] cursor-pointer flex-col items-center justify-center gap-1 rounded-xl border bg-transparent px-1 text-sm transition hover:opacity-80"
-                                style={{ borderColor: ratio === item.value ? theme.node.text : theme.node.stroke, color: theme.node.text }}
+                                data-selected={ratio === item.value}
+                                style={{ borderColor: ratio === item.value ? theme.node.text : theme.node.stroke, background: ratio === item.value ? theme.node.fill : "transparent", color: theme.node.text, fontWeight: ratio === item.value ? 600 : 400 }}
                                 onMouseDown={(event) => event.stopPropagation()}
                                 onClick={() => onConfigChange("size", item.value)}
                             >
@@ -195,7 +197,7 @@ export function normalizeVideoResolutionValue(value: string) {
 
 function OptionPill({ selected, disabled = false, theme, onClick, children }: { selected: boolean; disabled?: boolean; theme: CanvasTheme; onClick: () => void; children: ReactNode }) {
     return (
-        <button type="button" disabled={disabled} className="specular-control h-9 cursor-pointer rounded-full border px-2 text-sm transition hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-35" style={{ background: "transparent", borderColor: selected ? theme.node.text : theme.node.stroke, color: theme.node.text }} onMouseDown={(event) => event.stopPropagation()} onClick={onClick}>
+        <button type="button" disabled={disabled} data-selected={selected} className="specular-control h-9 cursor-pointer rounded-full border px-2 text-sm transition hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-35" style={{ background: selected ? theme.node.fill : "transparent", borderColor: selected ? theme.node.text : theme.node.stroke, color: theme.node.text, fontWeight: selected ? 600 : 400 }} onMouseDown={(event) => event.stopPropagation()} onClick={onClick}>
             {children}
         </button>
     );

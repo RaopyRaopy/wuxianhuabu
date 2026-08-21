@@ -302,6 +302,12 @@
         color: #fafafa !important;
     }
 
+    .dark .video-surface .specular-control[data-selected="true"] {
+        border-color: rgba(255, 255, 255, 0.68) !important;
+        background: #3a3a3a !important;
+        color: #fafafa !important;
+    }
+
     .dark .video-surface .ant-input:focus,
     .dark .video-surface .ant-input-affix-wrapper:focus-within,
     .dark .video-surface .ant-select-focused .ant-select-selector,
